@@ -39,6 +39,8 @@ kubectl create secret generic -n victoria-metrics-k8s-stack grafana-admin-passwo
 
 Make sure you use a better password!
 
+There are also secrets created for Gmail for the alerting setup in [Part 7](https://medium.com/itnext/kubernetes-monitoring-a-complete-solution-part-7-alerting-ab6bf26a722c); this is not provided here.
+
 # License
 
 This repo is licensed under the GNU GENERAL PUBLIC LICENSE, Version 3 (aka GPLv3). See [LICENSE](LICENSE) document.

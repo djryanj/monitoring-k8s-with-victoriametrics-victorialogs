@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: victoria-metrics-k8s-stack
+  labels:
+    grafana_datasource: 'true' # default value for: sidecar.datasources.label
+data:
+  pg-db.yaml: |-
+    apiVersion: 1
+    datasources:
+      - name: VictoriaLogs
+        type: victoriametrics-logs-datasource
+        url: http://victoria-logs-single-server.victoria-logs.svc.cluster.local:9428
+        isDefault: false
+
