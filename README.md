@@ -29,6 +29,16 @@ The following directories are found in this repo:
 - `manifests`: Broken down into subdirectories by chart/product, you'll find a variety of manifests here for various components discussed in the articles. These can be applied by `kubectl apply -f` as needed.
 - `talos`: Any Talos linux [configuration](https://www.talos.dev/v1.11/talos-guides/configuration/) patches required from the articles.
 
+# Note
+
+In [Part 6](https://medium.com/itnext/kubernetes-monitoring-a-complete-solution-part-6-visualizing-with-grafana-956499ff4d87), I reference creating a secret. I have not provided a `secret.yaml` in the interest of practicing good security (aka, not commiting secrets to git). Instead, use the command from the article:
+
+```shell
+kubectl create secret generic -n victoria-metrics-k8s-stack grafana-admin-password --from-literal=admin-user=admin --from-literal=admin-password=someSecureP@ssWord
+```
+
+Make sure you use a better password!
+
 # License
 
 This repo is licensed under the GNU GENERAL PUBLIC LICENSE, Version 3 (aka GPLv3). See [LICENSE](LICENSE) document.
