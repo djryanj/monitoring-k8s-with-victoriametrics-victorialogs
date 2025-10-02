@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: secrets-writer
+  namespace: victoria-metrics-k8s-stack
+  annotations:
+    argocd.argoproj.io/hook: PreSync # make sure this happens early
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: secrets-writer
+subjects:
+- kind: ServiceAccount
+  name: secrets-writer

@@ -1,0 +1,17 @@
+machine:
+  install:
+    extraKernelArgs:
+      - talos.logging.kernel=udp://127.0.0.1:6050/
+  logging:
+    destinations:
+      - endpoint: "udp://127.0.0.1:6051/"
+        format: "json_lines"
+        extraTags:
+          hostname: ${hostname} # fill this in oer machine
+cluster:
+  etcd:
+    extraArgs:
+      listen-metrics-urls: https://0.0.0.0:2379
+  controllerManager:
+    extraArgs:
+      bind-address: 0.0.0.0

@@ -1,0 +1,283 @@
+# -- See `kubectl explain poddisruptionbudget.spec` for more. Details are [here](https://kubernetes.io/docs/tasks/run-application/configure-pdb/)
+podDisruptionBudget:
+  enabled: false
+  #  minAvailable: 1
+  #  maxUnavailable: 1
+  # -- PodDisruptionBudget extra labels
+  extraLabels: {}
+
+server:
+  # -- Enable deployment of server component. Deployed as StatefulSet
+  enabled: true
+  replicaCount: 2
+  image:
+    tag: v1.14.0-victorialogs
+  persistentVolume:
+    # -- Create/use Persistent Volume Claim for server component. Empty dir if false
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: "nfs"
+    # -- Mount path. Server data Persistent Volume mount root path.
+    mountPath: /storage
+    # -- Mount subpath
+    subPath: ""
+    # -- Size of the volume. Should be calculated based on the logs you send and retention policy you set.
+    size: 100Gi
+
+  ingress:
+    # -- Enable deployment of ingress for server component
+    enabled: true
+
+    # -- Ingress annotations
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      cert-manager.io/revision-history-limit: "2"
+      kubernetes.io/tls-acme: "true"
+      kubernetes.io/ingress.class: nginx-internal
+      nginx.ingress.kubernetes.io/service-upstream: "true" # for linkerd mesh
+
+    # -- Ingress extra labels
+    extraLabels: {}
+
+    # -- Array of host objects
+    hosts:
+      - name: logs.domain.com
+        path:
+          - /
+        port: http
+
+    # -- Array of TLS objects
+    tls:
+      - secretName: logs-ingress-tls
+        hosts:
+          - logs.domain.com
+
+    # -- Ingress controller class name
+    ingressClassName: "nginx-internal"
+
+    # -- Ingress path type
+    pathType: Prefix
+
+  service:
+    # -- Service annotations
+    annotations: {}
+    # -- Service labels
+    labels: {}
+    # -- Service ClusterIP
+    clusterIP: ""
+    # -- Service external IPs. Details are [here]( https://kubernetes.io/docs/user-guide/services/#external-ips)
+    externalIPs: []
+    # -- Service load balancer IP
+    loadBalancerIP: ""
+    # -- Load balancer source range
+    loadBalancerSourceRanges: []
+    # -- Target port
+    targetPort: http
+    # -- Service port
+    servicePort: 9428
+    # -- Node port
+    # nodePort: 30000
+    # -- Service type
+    type: ClusterIP
+    # -- Service external traffic policy. Check [here](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip) for details
+    externalTrafficPolicy: ""
+    # -- Health check node port for a service. Check [here](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip) for details
+    healthCheckNodePort: ""
+    # -- Service IP family policy. Check [here](https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services) for details.
+    ipFamilyPolicy: ""
+    # -- List of service IP families. Check [here](https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services) for details.
+    ipFamilies: []
+
+  statefulSet:
+    # -- Creates statefulset instead of deployment, useful when you want to keep the cache
+    enabled: true
+    # -- Deploy order policy for StatefulSet pods
+    podManagementPolicy: OrderedReady
+    # -- StatefulSet update strategy. Check [here](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#update-strategies) for details.
+    updateStrategy:
+      {}
+      # type: RollingUpdate
+
+  # -- Pod's termination grace period in seconds
+  terminationGracePeriodSeconds: 60
+  serviceMonitor:
+    # -- Enable deployment of Service Monitor for server component. This is Prometheus operator object
+    enabled: false
+    # -- Service Monitor labels
+    extraLabels: {}
+    # -- Service Monitor annotations
+    annotations: {}
+    # -- Basic auth params for Service Monitor
+    basicAuth: {}
+    # -- Commented. Prometheus scrape interval for server component
+    #    interval: 15s
+    # -- Commented. Prometheus pre-scrape timeout for server component
+    #    scrapeTimeout: 5s
+    # -- Commented. HTTP scheme to use for scraping.
+    #    scheme: https
+    # -- Commented. TLS configuration to use when scraping the endpoint
+    #    tlsConfig:
+    #      insecureSkipVerify: true
+    # -- Service Monitor relabelings
+    relabelings: []
+    # -- Service Monitor metricRelabelings
+    metricRelabelings: []
+    # -- Service Monitor target port
+    targetPort: http
+
+# -- Values for [vector helm chart](https://github.com/vectordotdev/helm-charts/tree/develop/charts/vector)
+vector:
+  # -- Enable deployment of vector
+  enabled: true
+  podHostNetwork: true # needed for the sockets created below
+  dnsPolicy: ClusterFirstWithHostNet
+  containerPorts:
+    - name: prom-exporter
+      containerPort: 9090
+      protocol: TCP
+    - name: talos-krnl-sckt
+      containerPort: 6050
+      protocol: UDP
+    - name: talos-svc-skct
+      containerPort: 6051
+      protocol: UDP
+  customConfig:
+    data_dir: /vector-data-dir
+    api:
+      enabled: false
+      address: 0.0.0.0:8686
+      playground: true
+    sinks:
+      exporter:
+        type: prometheus_exporter
+        address: 0.0.0.0:9090
+        inputs: [internal_metrics]
+      vlogs:
+        type: elasticsearch
+        inputs:
+          - parser
+          - audit_parser
+          - talos_service_logs_xform
+          - talos_kernel_logs_xform
+        endpoints: << include "vlogs.es.urls" . >> # this dynamically populates via helm the VL endpoints
+        encoding:
+          except_fields:
+            - __host # this is always 127.0.0.1 so it's useless
+        mode: bulk
+        api_version: v8
+        compression: gzip
+        healthcheck:
+          enabled: false
+        request:
+          headers:
+            VL-Time-Field: timestamp
+            VL-Stream-Fields: stream,kubernetes.pod_name,kubernetes.container_name,kubernetes.pod_namespace
+            VL-Msg-Field: message,msg,_msg,log.msg,log.message,log
+    sources:
+      k8s:
+        type: kubernetes_logs
+      internal_metrics:
+        type: internal_metrics
+      kubernetes_audit_logs:
+        type: file
+        include:
+          - /var/log/audit/kube/*.log
+      talos_kernel_logs:
+        address: 0.0.0.0:6050
+        type: socket
+        mode: udp
+        max_length: 102400
+        decoding:
+          codec: json
+        host_key: __host
+      talos_service_logs:
+        address: 0.0.0.0:6051
+        type: socket
+        mode: udp
+        max_length: 102400
+        decoding:
+          codec: json
+        host_key: __host
+    transforms:
+      parser:
+        type: remap
+        inputs:
+          - k8s
+        source: |
+          .log = parse_json(.message) ?? .message
+          del(.message)
+      audit_parser:
+        type: remap
+        inputs:
+          - kubernetes_audit_logs
+        source: |
+          . = parse_json(.message) ?? .message
+          parsed_timestamp, err = parse_timestamp(.requestReceivedTimestamp, format: "%Y-%m-%dT%H:%M:%S.%fZ")
+          if err == null {
+            .timestamp = to_unix_timestamp(parsed_timestamp)
+          } else {
+            .timestamp = to_unix_timestamp(now())
+          }
+          # multiline strings in VRL are weird; the escape char has to be inside an actual string and not an expression
+          composed_message, err = "User: " + .user.username + "; " + .verb + " \
+            " + .objectRef.apiGroup + "/" + .objectRef.apiVersion + ":\
+            " + .objectRef.resource + "; Decision: " + .annotations."authorization.k8s.io/decision" + "\
+            ; Reason: " + .annotations."authorization.k8s.io/reason"
+          if err == null {
+            .msg = composed_message
+          } else {
+            .msg = .message
+          }
+      talos_kernel_logs_xform:
+        type: remap
+        inputs: [talos_kernel_logs]
+        source: |
+          del(.clock)
+          parsed_timestamp, err = parse_timestamp(."talos-time", format: "%Y-%m-%dT%H:%M:%S.%fZ")
+          if err == null {
+            .timestamp = to_unix_timestamp(parsed_timestamp)
+          } else {
+            .timestamp = to_unix_timestamp(now())
+          }
+          .message = parse_json(.msg) ?? .msg
+          del(.msg)
+          del(."talos-time")
+      talos_service_logs_xform:
+        type: remap
+        inputs: [talos_service_logs]
+        source: |
+          parsed_timestamp, err = parse_timestamp(."talos-time", format: "%Y-%m-%dT%H:%M:%S.%fZ")
+          if err == null {
+            .timestamp = to_unix_timestamp(parsed_timestamp)
+          } else {
+            .timestamp = to_unix_timestamp(now())
+          }
+          .message = parse_json(.msg) ?? .msg
+          .level = ."talos-level"
+          .service = ."talos-service"
+          del(.msg)
+          del(."talos-time")
+          del(."talos-level")
+          del(."talos-service")
+
+# -- Add extra specs dynamically to this chart
+extraObjects: []
+
+dashboards:
+  # -- Create VictoriaLogs dashboards
+  enabled: true
+  # -- Dashboard labels
+  labels: {}
+  #  grafana_dashboard: "1"
+  # -- Dashboard annotations
+  annotations: {}
+  # -- Override default namespace, where to create dashboards
+  namespace: ""
+  grafanaOperator:
+    enabled: false
+    spec:
+      instanceSelector:
+        matchLabels:
+          dashboards: "grafana"
+      allowCrossNamespaceImport: false
