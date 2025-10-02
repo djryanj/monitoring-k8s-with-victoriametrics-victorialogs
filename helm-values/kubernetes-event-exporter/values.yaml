@@ -1,0 +1,20 @@
+config:
+  leaderElection: {}
+  logLevel: debug
+  logFormat: pretty
+  metricsNamePrefix: event_exporter_
+  receivers:
+    - name: "dump"
+      file:
+        path: "/dev/stdout"
+        layout: {}
+    - name: "victorialogs"
+      loki:
+        url: "http://victoria-logs-single-server.victoria-logs.svc.cluster.local:9428/insert/loki/api/v1/push"
+        streamLabels:
+          source: kubernetes-event-exporter
+  route:
+    routes:
+      - match:
+          - receiver: "dump"
+          - receiver: "victorialogs"
